@@ -4,6 +4,7 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
+use log::log;
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct SchemaNode {
@@ -49,11 +50,16 @@ fn schema_to_map(schema: Vec<SchemaNode>) -> HashMap<String, Vec<String>> {
         .into_iter()
         .map(|node| {
             let prefix = node.prefix.clone();
-            (prefix, node.children.into_iter().map(|child| {child.prefix}).collect())
+            (
+                prefix,
+                node.children
+                    .into_iter()
+                    .map(|child| child.prefix)
+                    .collect(),
+            )
         })
         .collect()
 }
-
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum FieldType {
@@ -87,13 +93,14 @@ fn gen_top_level_map(nodes: &[SchemaNode]) -> HashMap<String, SchemaNode> {
 fn separate_prefix<'a>(line: &'a str) -> Result<(&'a str, Vec<&'a str>), FlowParseError> {
     let line = line.trim_end_matches('|');
     let mut split = line.splitn(2, '|');
-    let prefix = split.next().ok_or(FlowParseError::Invalid("Missing prefix".to_owned()))?;
+    let prefix = split
+        .next()
+        .ok_or(FlowParseError::Invalid("Missing prefix".to_owned()))?;
     let contents: Vec<&'a str> = split
         .next()
         .map(|rest| rest.split('|').collect())
         .ok_or(FlowParseError::Invalid("Missing contents".to_owned()))?;
     Ok((prefix, contents))
-
 }
 
 #[derive(Debug)]
@@ -127,32 +134,36 @@ where
         };
 
         let idx = nodes.len();
+
+        while let Some(&parent_idx) = stack.last() {
+            if nodes[parent_idx].prefix == "ROOT" {
+                // ROOT node always counts as valid parent
+                // Only ever present in stack on first row
+                nodes[parent_idx].children.push(idx);
+                stack.pop();
+                continue;
+            }
+            // Check if stack item is parent of idx
+            match schema_map
+                .get(&nodes[parent_idx].prefix)
+                .and_then(|p| Some(p.contains(&node.prefix)))
+            {
+                Some(is_child) => {
+                    nodes[parent_idx].children.push(idx);
+                    continue;
+                }
+                None => {
+
+                }
+            }
+            // Previous node was not a parent, so we have moved to a new grouping
+            stack.pop();
+        }
         nodes.push(node);
 
-        // while let Some(&parent_idx) = stack.last() {
-        //     let candidate_node = &nodes[parent_idx];
-        //     if candidate_node.prefix == "ROOT" {
-        //         // ROOT node always counts as valid parent
-        //         // Only present in stack on first row
-        //     }
-        //     // Find current location in schema
-        //     // By looking up prefixes
-        //     if schema_map
-        //         .get(&nodes[parent_idx].prefix)
-        //         .and_then(|n| n.children.get(prefix))
-        //         .is_some()
-        //     {
-        //         nodes[parent_idx].children.push(idx);
-        //         break;
-        //     } else {
-        //         stack.pop();
-        //     }
-        // }
-        //
         // if schema.contains_key(prefix.as_str()) {
         //     stack.push(idx);
         // }
-
 
         // if let Some(sub_schema) = schema_map.get(prefix) {
         //     if !sub_schema.children.is_empty() {
@@ -172,27 +183,57 @@ where
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn test_parse_basic() {
-    //     // Setup test data
-    //     let schema = vec![]; // or some SchemaNode objects
-    //     let content = vec!["foo".to_string(), "bar".to_string()].into_iter();
-    //
-    //     let result = parse(schema, content);
-    //
-    //     assert!(result.is_ok());
-    //     let decoded = result.unwrap();
-    //     assert_eq!(decoded.prefix, "expected_prefix");
-    // }
-    //
+    #[test]
+    fn test_parse_basic() {
+        // Setup test data
+        let schema  = vec![
+            SchemaNode {
+                prefix: "A01".to_string(),
+                model: HashMap::new(),
+                children: vec![SchemaNode {
+                    prefix: "A02".to_string(),
+                    model: HashMap::new(),
+                    children: Vec::new(),
+                }],
+            },
+            SchemaNode {
+                prefix: "B01".to_string(),
+                model: HashMap::new(),
+                children: Vec::new(),
+            },
+        ];
+        let content = vec!["A01|foo|bar|", "A02|wiz|bang|", "A01|bing|bong|", "B01|waz|baz|"].into_iter();
+
+        let result = parse(schema, content);
+
+        assert!(result.is_ok());
+        let decoded = result.unwrap();
+        assert_eq!(decoded.prefix, "expected_prefix");
+    }
+
     #[test]
     fn test_schema_to_map() {
         let expected: HashMap<String, Vec<String>> = HashMap::from([
             ("A01".to_string(), vec!["A02".to_string()]),
             ("B01".to_string(), vec![]),
-        ]); 
+        ]);
 
-        let nodes = vec![SchemaNode {prefix: "A01".to_string(), model: HashMap::new(), children: vec![SchemaNode {prefix: "A02".to_string(), model: HashMap::new(), children: Vec::new()}]}, SchemaNode {prefix: "B01".to_string(), model: HashMap::new(), children: Vec::new()}];
+        let nodes = vec![
+            SchemaNode {
+                prefix: "A01".to_string(),
+                model: HashMap::new(),
+                children: vec![SchemaNode {
+                    prefix: "A02".to_string(),
+                    model: HashMap::new(),
+                    children: Vec::new(),
+                }],
+            },
+            SchemaNode {
+                prefix: "B01".to_string(),
+                model: HashMap::new(),
+                children: Vec::new(),
+            },
+        ];
 
         let result = schema_to_map(nodes);
 
