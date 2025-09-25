@@ -44,7 +44,7 @@ flow_parser.parse(flow, schema=schema)
 
 Install:
 ```bash
-cargo add flow-parser
+cargo add flow_parser
 ```
 
 Usage:
