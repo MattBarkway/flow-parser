@@ -4,15 +4,6 @@
 
 It provides a fast, reliable, and flexible way to process large flow files in both Rust and Python.
 
-### Features
-
-Generic parser for pipe-delimited (|) structured files
-
-Optimized for large files typical in energy sector workflows
-
-Easy-to-use Python API through pyo3 bindings
-
-Fully written in Rust for performance and safety
 
 ### Installation
 
@@ -80,4 +71,14 @@ let content = vec!["A01|foo|bar|", "A02|wiz|bang|", "A01|bing|bong|", "B01|waz|b
 let result = parse(schema, content.into_iter());
 
 ```
+
+### Contributing
+
+Contributions are welcome!
+
+Please open issues or pull requests for bug fixes, features, or documentation improvements.
+
+### License
+
+MIT
 
