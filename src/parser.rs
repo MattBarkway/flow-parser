@@ -1,10 +1,8 @@
 use crate::errors::FlowParseError;
-use serde::Deserialize;
-use std::any::Any;
+use crate::models::{DecodedFlow, Node, SchemaNode, NodeArena};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use crate::models::{DecodedFlow, Node, SchemaNode};
 
 fn build_children_map(node: SchemaNode, map: &mut HashMap<String, Vec<String>>) {
     let child_prefixes = node.children.iter().map(|c| c.prefix.clone()).collect();
@@ -16,11 +14,7 @@ fn build_children_map(node: SchemaNode, map: &mut HashMap<String, Vec<String>>) 
 }
 
 fn wrap_with_root(schema: Vec<SchemaNode>) -> SchemaNode {
-    SchemaNode {
-        prefix: "ROOT".to_string(),
-        model: HashMap::new(),
-        children: schema,
-    }
+    SchemaNode::new("ROOT", HashMap::new(), schema)
 }
 
 pub fn load_schema(path: &str) -> Result<Vec<SchemaNode>, FlowParseError> {
@@ -29,17 +23,15 @@ pub fn load_schema(path: &str) -> Result<Vec<SchemaNode>, FlowParseError> {
     Ok(serde_json::from_reader(reader).map_err(|e| FlowParseError::Serde(e))?)
 }
 
-fn separate_prefix<'a>(line: &'a str) -> Result<(&'a str, Vec<&'a str>), FlowParseError> {
+fn separate_prefix(line: &str) -> Result<(&str, Vec<&str>), FlowParseError> {
     let line = line.trim_end_matches('|');
-    let mut split = line.splitn(2, '|');
-    let prefix = split
-        .next()
-        .ok_or(FlowParseError::Invalid("Missing prefix".to_owned()))?;
-    let contents: Vec<&'a str> = split
-        .next()
-        .map(|rest| rest.split('|').collect())
-        .ok_or(FlowParseError::Invalid("Missing contents".to_owned()))?;
-    Ok((prefix, contents))
+    let mut parts = line.splitn(2, '|');
+    match (parts.next(), parts.next()) {
+        (Some(prefix), Some(rest)) => Ok((prefix, rest.split('|').collect())),
+        _ => Err(FlowParseError::Invalid(
+            "Missing prefix or contents".to_owned(),
+        )),
+    }
 }
 
 fn build_nested(nodes: &[Node], idx: usize) -> DecodedFlow {
@@ -55,72 +47,63 @@ fn build_nested(nodes: &[Node], idx: usize) -> DecodedFlow {
     }
 }
 
-pub fn parse<'a, I>(schema: Vec<SchemaNode>, mut content: I) -> Result<DecodedFlow, FlowParseError>
+fn is_valid_parent(
+    prefix: &str,
+    parent_prefix: &str,
+    schema_map: &HashMap<String, Vec<String>>,
+) -> Result<bool, FlowParseError> {
+    Ok(parent_prefix == "ROOT"
+        || schema_map
+            .get(parent_prefix)
+            .ok_or_else(|| FlowParseError::Invalid(format!("Unknown prefix: {parent_prefix}")))?
+            .contains(&prefix.to_string()))
+}
+
+fn has_children(
+    prefix: &str,
+    schema_map: &HashMap<String, Vec<String>>,
+) -> Result<bool, FlowParseError> {
+    Ok(schema_map
+        .get(prefix)
+        .ok_or_else(|| FlowParseError::Invalid(format!("Unknown prefix: {prefix}")))?
+        .len()
+        > 0)
+}
+
+fn attach_to_parent(
+    nodes: &mut Vec<Node>,
+    stack: &mut Vec<usize>,
+    idx: usize,
+    prefix: &str,
+    schema_map: &HashMap<String, Vec<String>>,
+) -> Result<(), FlowParseError> {
+    while let Some(&parent_idx) = stack.last() {
+        if is_valid_parent(prefix, &nodes[parent_idx].prefix, schema_map)? {
+            nodes[parent_idx].children.push(idx);
+            if has_children(prefix, schema_map)? {
+                stack.push(idx);
+            }
+            break;
+        } else {
+            stack.pop();
+        }
+    }
+    Ok(())
+}
+
+pub fn parse<'a, I>(schema: Vec<SchemaNode>, content: I) -> Result<DecodedFlow, FlowParseError>
 where
     I: Iterator<Item = &'a str>,
 {
-    let flattened_schema = wrap_with_root(schema);
-    let mut nodes = Vec::new();
-    nodes.push(Node {
-        prefix: "ROOT".to_string(),
-        contents: vec![],
-        children: vec![],
-    });
-
+    let mut nodes = vec![Node::new("ROOT", vec![])];
     let mut stack = vec![0];
-    let schema_map = &mut HashMap::new();
-    build_children_map(flattened_schema, schema_map);
-    while let Some(row) = content.next() {
+    let mut schema_map = HashMap::new();
+    build_children_map(wrap_with_root(schema), &mut schema_map);
+
+    for row in content {
         let (prefix, contents) = separate_prefix(row)?;
-        let node = Node {
-            prefix: prefix.to_owned(),
-            contents: contents.into_iter().map(String::from).collect(),
-            children: Vec::new(),
-        };
-        let idx = nodes.len();
-        nodes.push(node);
-
-        // TODO only add to stack is self.children not empty
-        while let Some(&candidate_parent_idx) = stack.last() {
-            let stack_top = &nodes[candidate_parent_idx];
-            if stack_top.prefix == "ROOT" {
-                // ROOT node always counts as valid parent
-                // Only ever present in stack on first row
-                nodes[candidate_parent_idx].children.push(idx);
-
-                let has_children = schema_map
-                    .get(prefix)
-                    .ok_or(FlowParseError::Invalid("Unknown prefix".to_string()))?
-                    .len()
-                    > 0;
-                if has_children {
-                    stack.push(idx);
-                }
-                break;
-            } else {
-                let stack_top_schema = schema_map
-                    .get(&stack_top.prefix)
-                    .ok_or(FlowParseError::Invalid("Unknown prefix".to_string()))?;
-                // Check if stack top is parent of current row
-                if stack_top_schema.contains(&prefix.to_string()) {
-                    // If stack top is valid parent, add idx to stack
-                    nodes[candidate_parent_idx].children.push(idx);
-                    let has_children = schema_map
-                        .get(prefix)
-                        .ok_or(FlowParseError::Invalid("Unknown prefix".to_string()))?
-                        .len()
-                        > 0;
-                    if has_children {
-                        stack.push(idx);
-                    }
-                    break;
-                } else {
-                    // stack top is not valid parent, pop stack
-                    stack.pop();
-                    continue;
-                }
-            }
-        }
+        let idx = nodes.push_node(prefix, contents);
+        attach_to_parent(&mut nodes, &mut stack, idx, prefix, &schema_map)?;
     }
 
     Ok(build_nested(&nodes, 0))
@@ -132,7 +115,6 @@ mod tests {
 
     #[test]
     fn test_parse_basic() {
-        // Setup test data
         let schema = vec![
             SchemaNode {
                 prefix: "A01".to_string(),
