@@ -36,3 +36,9 @@ impl From<serde_json::Error> for FlowParseError {
         FlowParseError::Serde(err)
     }
 }
+
+impl From<String> for FlowParseError {
+    fn from(message: String) -> FlowParseError {
+        FlowParseError::Invalid(message)
+    }
+}
