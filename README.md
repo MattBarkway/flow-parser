@@ -17,27 +17,38 @@ poetry add flow-parser
 Usage:
 
 ```python
-import flow_parser
+from py_flow_parser import SchemaNode, FieldType, DecodedFlow, parse
 
-schema = [
-    {
-        "prefix": "A01",
-        "model": {"foo": "string", "bar": "int"},
-        "children": [
-            {"prefix": "B01", "model": {"baz": "float"}, "children": []}
-        ]
-    },
+schema =[
+    SchemaNode(
+        prefix="A01",
+        model={},
+        children=[
+            SchemaNode(
+                prefix="A02",
+                model={},
+                children=[]
+            )]),
+    SchemaNode(
+        prefix="B01",
+        model={},
+        children=[]
+    )
+]
+content = [
+    "A01|foo|bar|",
+    "A02|wiz|bang|",
+    "A01|bing|bong|",
+    "B01|waz|baz|",
 ]
 
-flow = """
-A01|foo|bar|
-B01|1.2|
-A01|bing|bong|
-...
-""" 
-
-flow_parser.parse(flow, schema=schema)
-
+result = parse(schema, content)
+# > DecodedFlow(prefix="ROOT", contents=[], children=[
+# >     DecodedFlow(prefix="A01", contents=["foo", "bar"], children=[
+# >         DecodedFlow(prefix="A02", contents=["wiz", "bang"], children=[]),
+# >     ]),
+# >     DecodedFlow(prefix="B01", contents=["waz", "baz"], children=[]),
+# > ])
 ```
 
 #### Rust
@@ -69,7 +80,12 @@ let schema  = vec![
 let content = vec!["A01|foo|bar|", "A02|wiz|bang|", "A01|bing|bong|", "B01|waz|baz|"];
 
 let result = parse(schema, content.into_iter());
-
+# > DecodedFlow(prefix="ROOT", contents=[], children=[
+# >     DecodedFlow(prefix="A01", contents=["foo", "bar"], children=[
+# >         DecodedFlow(prefix="A02", contents=["wiz", "bang"], children=[]),
+# >     ]),
+# >     DecodedFlow(prefix="B01", contents=["waz", "baz"], children=[]),
+# > ])
 ```
 
 ### Contributing
