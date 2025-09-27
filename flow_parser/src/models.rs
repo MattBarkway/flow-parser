@@ -11,8 +11,8 @@ pub struct SchemaNode {
 impl SchemaNode {
     pub fn new(prefix: &str, model: HashMap<String, FieldType>, children: Vec<SchemaNode>) -> SchemaNode {
         SchemaNode {
-            prefix: "ROOT".to_string(),
-            model: HashMap::new(),
+            prefix: prefix.to_string(),
+            model,
             children,
         }
     }
