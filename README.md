@@ -1,9 +1,8 @@
 ## Flow Parser
 
-**Flow Parser** is a Rust library with optional Python bindings (via [pyo3](https://pyo3.rs/)) designed for parsing structured, pipe-delimited files, such as those commonly used in the energy industry. 
+This is a Rust library with optional Python bindings (via [pyo3](https://pyo3.rs/)) for parsing structured pipe-delimited files.
 
-It provides a fast, reliable, and flexible way to process large flow files in both Rust and Python.
-
+These files are used in a number of industries such as [healthcare](https://en.wikipedia.org/wiki/Health_Level_7#HL7_Version_2) and the [UK energy industry](https://www.electralink.co.uk/data-catalogues/dtc-catalogue/)
 
 ### Installation
 
@@ -80,19 +79,19 @@ let schema  = vec![
 let content = vec!["A01|foo|bar|", "A02|wiz|bang|", "A01|bing|bong|", "B01|waz|baz|"];
 
 let result = parse(schema, content.into_iter());
-# > DecodedFlow(prefix="ROOT", contents=[], children=[
-# >     DecodedFlow(prefix="A01", contents=["foo", "bar"], children=[
-# >         DecodedFlow(prefix="A02", contents=["wiz", "bang"], children=[]),
-# >     ]),
-# >     DecodedFlow(prefix="B01", contents=["waz", "baz"], children=[]),
-# > ])
+// > DecodedFlow(prefix="ROOT", contents=[], children=[
+// >     DecodedFlow(prefix="A01", contents=["foo", "bar"], children=[
+// >         DecodedFlow(prefix="A02", contents=["wiz", "bang"], children=[]),
+// >     ]),
+// >     DecodedFlow(prefix="B01", contents=["waz", "baz"], children=[]),
+// > ])
 ```
 
 ### Contributing
 
-Contributions are welcome!
+Contributions are welcome.
 
-Please open issues or pull requests for bug fixes, features, or documentation improvements.
+Please open issues to report bug fixes, request features, or add documentation improvements.
 
 ### License
 
